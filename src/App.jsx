@@ -1,9 +1,86 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
+import { loadStripe } from "@stripe/stripe-js";
+import Stripe from "stripe";
 import swell from "swell-js";
 
 swell.init("nnoxx-staging", import.meta.env.VITE_SWELL_PUBLIC_KEY);
+
+const STRIPE_PUBLIC_KEY =
+  "pk_test_51M34D4L3jXIJJMcYZHDQq4I4vNQ50GLjGFaxp9VgQmLKxb6kNcDWSDWtUngEDzt2P0Do0PcDGPCR1KlTYSReXYeY00YSymwxQP";
+
+const STRIPE_SECRET_KEY =
+  "sk_test_51M34D4L3jXIJJMcYw0EZZlFMGBUoLgmjUqcNlYPBQx0nALhyTRS5cMnhU3I8DqZ6VbgRvXBDSnKKcCDByp0SIuY000dllmp1AG";
+
+const createKlarna = async () => {
+  try {
+    const str = await loadStripe(STRIPE_PUBLIC_KEY);
+    const stripe = Stripe(STRIPE_SECRET_KEY);
+
+    // fetch cart details before sending to Klarna
+
+    const intent = await str.createSource({
+      type: "klarna",
+      flow: "redirect",
+      redirect: {
+        return_url: "http://localhost:3000/success",
+      },
+      amount: 816,
+      currency: "usd",
+      klarna: { product: "payment", purchase_country: "US" },
+      source_order: {
+        items: [
+          {
+            type: "sku",
+            description: "Grey cotton T-shirt",
+            quantity: 2,
+            currency: "usd",
+            amount: 796,
+          },
+          {
+            type: "tax",
+            description: "Taxes",
+            currency: "usd",
+            amount: 20,
+          },
+          {
+            type: "shipping",
+            description: "Free Shipping",
+            currency: "usd",
+            amount: 0,
+          },
+        ],
+      },
+    });
+    console.log(intent);
+
+    // method 2
+    // const session = await stripe.checkout.sessions.create({
+    //   payment_method_types: ["klarna"],
+    //   line_items: [
+    //     {
+    //       price_data: {
+    //         currency: "usd",
+    //         product_data: {
+    //           name: "T-shirt",
+    //         },
+    //         unit_amount: 2000,
+    //       },
+    //       quantity: 1,
+    //     },
+    //   ],
+    //   // line_items: [{ price: "price_1M3JwrL3jXIJJMcYEIwYK0qH", quantity: 2 }],
+    //   mode: "payment",
+    //   success_url: "https://example.com/success",
+    //   cancel_url: "https://example.com/cancel",
+    // });
+    // console.log("session", session);
+    // redirect: https://checkout.stripe.com/c/pay/cs_test_a1NQrzeFtpi3hj2BWm9LNMfqrN2uq4mUWryFIznuXbmU2SPlzygg9pNQTg#fidkdWxOYHwnPyd1blpxYHZxWjA0SDYxQTFJNm9dTE9PSGZcX01BVHQxTDFzS1QwNUJJb0JDZH11PFNiVGhJTn1nM25LZkFSVkFScVBrYkBBf3E3VTVBajVVZkFCVUZXNE5pUVxWV2BdXGBcNTVcVnxocn1UVScpJ2N3amhWYHdzYHcnP3F3cGApJ2lkfGpwcVF8dWAnPyd2bGtiaWBabHFgaCcpJ2BrZGdpYFVpZGZgbWppYWB3dic%2FcXdwYHgl
+  } catch (error) {
+    console.log(error);
+  }
+};
 
 const createCart = async () => {
   await swell.cart.setItems([]); //Used to reset the cart on init
@@ -66,7 +143,8 @@ const createPayWithCard = async () => {
   }
 };
 
-function App() {
+function App(props) {
+  console.log("props", props);
   useEffect(() => {
     createCart();
   }, []);
@@ -127,9 +205,59 @@ function App() {
       console.log("clicked");
     }
   }
+  const payWithKlarna = async () => {
+    const form = document.getElementById("payment-form");
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
 
-  console.log(import.meta.env.VITE_SWELL_PUBLIC_KEY);
+      const resp = await swell.payment.tokenize({
+        klarna: {
+          onError: (err) => {
+            // inform the customer there was an error
+            console.log(err);
+          },
+        },
+      });
+      console.log("response", resp);
+    });
+  };
 
+  useEffect(() => {
+    const form = document.getElementById("payment-form");
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const billing = {
+        method: "klarna",
+        klarna: {
+          source: "",
+          // address1: "1 Main Dr.",
+          // zip: 90210,
+          // country: "US",
+          billing_details: {
+            address1: "1 Main Dr.",
+            zip: 90210,
+            country: "US",
+          },
+        },
+      };
+
+      // Using Swell JS library
+      await swell.cart.update({
+        billing,
+      });
+
+      const resp = await swell.payment.tokenize({
+        klarna: {
+          onError: (err) => {
+            // inform the customer there was an error
+            console.log(err);
+          },
+        },
+      });
+      console.log("response", resp);
+    });
+  }, []);
   return (
     <>
       GPAY
@@ -149,6 +277,10 @@ function App() {
       {isApplePaySuccess ? isApplePaySuccess : ""}
       <button onClick={createCart}>Create Cart Apple</button>
       <button onClick={createPayWithCard}>Pay with card</button>
+      <form id="payment-form" onSubmit={payWithKlarna}>
+        <button type="submit">Klarna</button>
+      </form>
+      <button onClick={createKlarna}> Create Klarna</button>
     </>
   );
 }
